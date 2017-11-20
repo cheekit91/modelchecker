@@ -1,0 +1,79 @@
+dtmc
+
+module searchMod
+	alpha: [0..1000];
+	beta: [0..1000];
+	depth: [0..4];
+	nodes: [0..10000];
+
+	///* we're as deep as we want to be; call quiesce() to get
+	//   a reasonable score and return it. */
+	//if (!depth)
+	//	return quiesce(alpha,beta);
+	//++nodes;
+	[] true -> (nodes'=nodes+1);
+
+
+	//pv_length[ply] = ply;
+
+	///* are we in check? if so, we want to search deeper */
+	//c = in_check(side);
+		//BOOL in_check(int s)
+		//{
+		//	int i;
+		//
+		//	for (i = 0; i < 64; ++i)
+		//		if (piece[i] == KING && color[i] == s)
+					//**Complicated attack
+		//			return attack(i, s ^ 1);
+		//	return TRUE;  /* shouldn't get here */
+		//}
+	//if (c)
+	//	++depth;
+	[] depth>0 -> (depth'=depth-1); 
+	//**Complicated gen
+	//gen();
+	//if (follow_pv)  /* are we following the PV? */
+	//	sort_pv();
+		//void sort_pv()
+		//{
+		//	int i;
+		//
+		//	follow_pv = FALSE;
+		//	for(i = first_move[ply]; i < first_move[ply + 1]; ++i)
+		//		if (gen_dat[i].m.u == pv[0][ply].u) {
+		//			follow_pv = TRUE;
+		//			gen_dat[i].score += 10000000;
+		//			return;
+		//		}
+		//}
+	//f = FALSE;
+
+	///* loop through the moves */
+	//for (i = first_move[ply]; i < first_move[ply + 1]; ++i) {
+	//	sort(i);
+		//**complicated makemove
+	//	if (!makemove(gen_dat[i].m.b))
+	//		continue;
+	//	f = TRUE;
+		//****recursive
+	//	x = -search(-beta, -alpha, depth - 1);
+	//	takeback();
+	//	if (x > alpha) {
+
+	//		/* this move caused a cutoff, so increase the history
+	//		   value so it gets ordered high next time we can
+	//		   search it */
+	//		history[(int)gen_dat[i].m.b.from][(int)gen_dat[i].m.b.to] += depth;
+	//		if (x >= beta)
+	//			return beta;
+	//		alpha = x;
+
+	//		/* update the PV */
+	//		pv[ply][ply] = gen_dat[i].m;
+	//		for (j = ply + 1; j < pv_length[ply + 1]; ++j)
+	//			pv[ply][j] = pv[ply + 1][j];
+	//		pv_length[ply] = pv_length[ply + 1];
+	//	}
+	//}
+endmodule
