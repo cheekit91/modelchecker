@@ -6,47 +6,37 @@
  */
 
 
-#define _CRT_SECURE_NO_WARNINGS
-
 #include <stdio.h>
 #include <string.h>
 #include "defs.h"
 #include "data.h"
 #include "protos.h"
 
+
 /* see the beginning of think() */
 #include <setjmp.h>
 jmp_buf env;
 BOOL stop_search;
 
-const char* FILE_DIR = "C:\\Users\\cheekit\\Desktop\\tree.csv";
-FILE *pFile;
 
 /* think() calls search() iteratively. Search statistics
    are printed depending on the value of output:
    0 = no output
    1 = normal output
    2 = xboard format output */
+FILE *fp ;
+
 
 void think(int output)
 {
-	pFile = fopen(FILE_DIR, "w");
-	if (pFile == NULL)
-	{
-		printf("Error opening file!");
-	}
-	else
-	{
-		printf("Success!");
-	}
-
 	int i, j, x;
-
+	fp = fopen("out2.csv", "w");
 	/* try the opening book first */
+	/*
 	pv[0][0].u = book_move();
 	if (pv[0][0].u != -1)
 		return;
-
+	*/ /////////t
 	/* some code that lets us longjmp back here and return
 	   from think() when our time is up */
 	stop_search = FALSE;
@@ -67,17 +57,12 @@ void think(int output)
 
 	memset(pv, 0, sizeof(pv));
 	memset(history, 0, sizeof(history));
-	TrackState tracker;
-	tracker.count[0] = 0;
-	tracker.count[1] = 0;
-	tracker.count[2] = 0;
 	if (output == 1)
 		printf("ply      nodes  score  pv\n");
-	for (i = 1; i <= max_depth; ++i) {
+	i = 2;
+	//for (i = 1; i <= max_depth; ++i) {
 		follow_pv = TRUE;
-		//printf("depth %d", i);
-		fprintf(pFile, "depth %d\n", i);
-		x = search(-10000, 10000, i, tracker);
+		x = search(-10000, 10000, i, 0);
 		if (output == 1)
 			printf("%3d  %9d  %5d ", i, nodes, x);
 		else if (output == 2)
@@ -89,26 +74,44 @@ void think(int output)
 			printf("\n");
 			fflush(stdout);
 		}
-		if (x > 9000 || x < -9000)
-			break;
-	}
+		//if (x > 9000 || x < -9000)
+		//	break;
+	//}
+	fclose(fp);
 }
 
 
 /* search() does just that, in negamax fashion */
 
-int search(int alpha, int beta, int depth, TrackState tracker)
+int search(int alpha, int beta, int depth ,int prune)
 {
 	int i, j, x;
 	BOOL c, f;
 
-	fprintf(pFile, "level,%d\n", depth);
 	/* we're as deep as we want to be; call quiesce() to get
 	   a reasonable score and return it. */
-	if (!depth)
-		return quiesce(alpha,beta, tracker);
-	++nodes;
+	int prun = prune;
+	int prun_ret = 0;
+	if (!depth) {
+		++nodes;
+		int temp = quiesce(alpha,beta);
+		printf ("nodes: %d, depth 0 a: %d b:%d eval %d\n",nodes,alpha,beta,temp);
 
+		fprintf(fp, "%d,0,%d,%d,%d",nodes,alpha,beta,temp);
+		if (prun == 1)
+			fprintf(fp, ",prune\n");
+		else 
+			fprintf(fp, "\n");
+
+		return temp;
+	}
+	++nodes;
+	
+	int cur_node = nodes;
+	int cur_dep = depth;
+	
+	printf("nodes: %d depth %d a:%d b:%d\n",nodes, depth,alpha,beta);
+	//fprintf(fp, "%d,%d,%d,%d\n",nodes,depth,alpha,beta);
 	/* do some housekeeping every 1024 nodes */
 	if ((nodes & 1023) == 0)
 		checkup();
@@ -124,15 +127,10 @@ int search(int alpha, int beta, int depth, TrackState tracker)
 
 	/* are we too deep? */
 	if (ply >= MAX_PLY - 1)
-	{
-		fprintf(pFile, "skipped due to too deep\n");
 		return eval();
-	}
 	if (hply >= HIST_STACK - 1)
-	{
-		fprintf(pFile, "skipped due to history stack\n");
 		return eval();
-	}
+
 	/* are we in check? if so, we want to search deeper */
 	c = in_check(side);
 	if (c)
@@ -145,13 +143,10 @@ int search(int alpha, int beta, int depth, TrackState tracker)
 	/* loop through the moves */
 	for (i = first_move[ply]; i < first_move[ply + 1]; ++i) {
 		sort(i);
-		if (!makemove(gen_dat[i].m.b)) {
+		if (!makemove(gen_dat[i].m.b))
 			continue;
-		}
 		f = TRUE;
-		tracker.count[depth] += 1;
-		fprintf(pFile, "moving through depth %d\n", depth);
-		x = -search(-beta, -alpha, depth - 1, tracker);
+		x = -search(-beta, -alpha, depth - 1, prun);
 		takeback();
 		if (x > alpha) {
 
@@ -159,12 +154,19 @@ int search(int alpha, int beta, int depth, TrackState tracker)
 			   value so it gets ordered high next time we can
 			   search it */
 			history[(int)gen_dat[i].m.b.from][(int)gen_dat[i].m.b.to] += depth;
-			if (x >= beta)
-			{
-				fprintf(pFile, "Return Beta,%d,%d,%d,%d,%d,%d\n", tracker.count[2], tracker.count[1], tracker.count[0], x, alpha, beta);
-				return beta;
+			if (x >= beta){
+				prun = 1;
+				prun_ret = beta;//////////
+				//fprintf(fp, "%d,%d,%d,%d,%d\n",cur_node,cur_dep,alpha,beta,alpha);
+				//int j;
+				//for (j = i+1; j < first_move[ply + 1]; j++) {
+					//nodes++;
+					//fprintf(fp, "-\n");
+				//}
+				//return beta;
 			}
-			alpha = x;
+			if(x<beta)
+				alpha = x;
 
 			/* update the PV */
 			pv[ply][ply] = gen_dat[i].m;
@@ -172,22 +174,33 @@ int search(int alpha, int beta, int depth, TrackState tracker)
 				pv[ply][j] = pv[ply + 1][j];
 			pv_length[ply] = pv_length[ply + 1];
 		}
-		//fprintf(pFile, "Looping move,%d,%d,%d\n", x, alpha, beta);
 	}
 
 	/* no legal moves? then we're in checkmate or stalemate */
-	if (!f) {
+	/*if (!f) {
 		if (c)
 			return -10000 + ply;
 		else
 			return 0;
-	}
+	}*///////
 
 	/* fifty move draw rule */
-	if (fifty >= 100)
-		return 0;
-	fprintf(pFile, "Return Alpha,%d,%d,%d,%d,%d,%d\n", tracker.count[2], tracker.count[1], tracker.count[0], x, alpha, beta);
-	return alpha;
+	//if (fifty >= 100)
+	//	return 0;///////
+	if (prun == 1)
+		fprintf(fp, "%d,%d,%d,%d,%d",cur_node,cur_dep,alpha,beta,prun_ret);
+	else
+		fprintf(fp, "%d,%d,%d,%d,%d",cur_node,cur_dep,alpha,beta,alpha);
+	
+	if (prune == 1)
+		fprintf(fp, ",prune\n");////look at parent
+	else 
+		fprintf(fp, "\n");
+
+	if (prun == 1) 
+		return prun_ret;
+	else 
+		return alpha;
 }
 
 
@@ -198,13 +211,12 @@ int search(int alpha, int beta, int depth, TrackState tracker)
    is to find a position where there isn't a lot going on
    so the static evaluation function will work. */
 
-int quiesce(int alpha,int beta, TrackState tracker)
+int quiesce(int alpha,int beta)
 {
 	int i, j, x;
 
-	++nodes;
-
-	fprintf(pFile, "qlevel\n");
+	//++nodes;
+	
 	/* do some housekeeping every 1024 nodes */
 	if ((nodes & 1023) == 0)
 		checkup();
@@ -213,23 +225,14 @@ int quiesce(int alpha,int beta, TrackState tracker)
 
 	/* are we too deep? */
 	if (ply >= MAX_PLY - 1)
-	{
-		fprintf(pFile, "skipped due to too deep\n");
 		return eval();
-	}
 	if (hply >= HIST_STACK - 1)
-	{
-		fprintf(pFile, "skipped due to history stack\n");
 		return eval();
-	}
 
 	/* check with the evaluation function */
 	x = eval();
 	if (x >= beta)
-	{
-		fprintf(pFile, "Return Beta,%d,%d,%d,%d,%d,%d\n", tracker.count[2], tracker.count[1], tracker.count[0], x, alpha, beta);
 		return beta;
-	}
 	if (x > alpha)
 		alpha = x;
 
@@ -242,17 +245,11 @@ int quiesce(int alpha,int beta, TrackState tracker)
 		sort(i);
 		if (!makemove(gen_dat[i].m.b))
 			continue;
-
-		fprintf(pFile, "moving through quiesce\n");
-		tracker.count[0] += 1;
-		x = -quiesce(-beta, -alpha, tracker);
+		x = -quiesce(-beta, -alpha);
 		takeback();
 		if (x > alpha) {
 			if (x >= beta)
-			{
-				fprintf(pFile, "Return Beta,%d,%d,%d,%d,%d,%d\n", tracker.count[2], tracker.count[1], tracker.count[0], x, alpha, beta);
 				return beta;
-			}
 			alpha = x;
 
 			/* update the PV */
@@ -261,9 +258,7 @@ int quiesce(int alpha,int beta, TrackState tracker)
 				pv[ply][j] = pv[ply + 1][j];
 			pv_length[ply] = pv_length[ply + 1];
 		}
-		//fprintf(pFile, "Looping move,%d,%d,%d\n", x, alpha, beta);
 	}
-	fprintf(pFile, "Return Alpha,%d,%d,%d,%d,%d,%d\n", tracker.count[2], tracker.count[1], tracker.count[0], x, alpha, beta);
 	return alpha;
 }
 
