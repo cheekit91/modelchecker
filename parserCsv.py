@@ -1,100 +1,73 @@
-
-from __future__ import division
 import csv
 import numpy as np
-from operator import itemgetter
-
-with open('C:\\Users\\cheekit\\Desktop\\tree.csv', 'r') as f:
-    data = [line for line in csv.reader(f)]
 
 #Data format
-#alpha/beta count[2] count[1] count[0] x alpha beta
-#Alpha   0   1   0   13  13  10000
+#NodeNum Depth Alpha Beta score
 
-depth1=[]
-depth2=[]
-node=0
-# datasize=len(data)
-for row in data:
-    if(row==data[len(data)-1]):
-        continue
-    if(int(row[0])>node):
-        if(len(row)==5): #no prunning
-            depth2.append(0)
+#read csv and record beta,score
+for movecount in range(5):
+    with open('C:/Users/cheekit/Desktop/tree%d.csv'%movecount, 'r') as f:
+        data = [line for line in csv.reader(f)]
+
+    depth1nodes=[]
+    depth1=[]
+    depth2=[]
+    node=0
+    for row in data:
+        if(int(row[1])==0):
+            depth2.append(row[3]+','+row[4]) #beta + score
         else:
-            depth2.append(1)
-    else:
-        depth1.append(depth2)
-        depth2=[]
-    node=int(row[0])
+            depth1.append(depth2)
+            depth1nodes.append(row[3]+','+row[4])
+            depth2=[]
+        node=int(row[0])
 
-print(len(depth1))
-for i in depth1:
-    print(i)
-
-depth1size=len(depth1)
-prob1=1.0/depth1size
-print(prob1)
-
-numOfNodes=0
-for child in depth1:
-    numOfNodes+=1
-    for grandchild in child:
+    #Calculate the total number of nodes
+    #so that we can set the boundary limit in prism model initialization phase 
+    numOfNodes=0
+    for child in depth1:
         numOfNodes+=1
+        for grandchild in child:
+            numOfNodes+=1
 
-print(numOfNodes)
-output  = open('C:\\Users\\cheekit\\Desktop\\chess.pm', "w")
-output.write('dtmc\n')
-output.write('module chess\n')
+    output  = open('C:/Users/cheekit/Desktop/chess%d.pm'%movecount, "w")
+    output.write('dtmc\n')
+    output.write('module chess\n')
+    output.write('s : [0..%d] init 0;\n'%numOfNodes)
+    output.write('beta : [-10000..10001] init 10001;\n')
+    output.write('x : [-10001..10000] init -10001;\n')
 
-output.write('s : [0..%d] init 0;\n'%numOfNodes)
-output.write('d : [0..1] init 0;\n')
-
-depth=0
-count=0
-output.write("[]s=%d->"%count) #root node
-Idx=0
-header=[]
-for child in depth1:
-    prob=1.0/len(depth1)
-    output.write("1/%d:(s'=%d)&(d'=0)"%(len(depth1),count))
-    if(Idx==(len(depth1)-1)): #last
-        output.write(";\n")
-    else:
-        output.write("+")
-    header.append("[]s=%d->"%count)
-    Idx+=1
-# output.write("\\\\testing \n")
-
-count=len(depth1)
-for i in range(len(depth1)):
-    output.write(header[i])
+    #writing transition from depth 2 to depth 1
+    depth=0
+    count=0
+    output.write("[]s=%d->"%count) #root node
     Idx=0
-    for grandchild in depth1[i]:
+    header=[]
+    prob=1.0/len(depth1nodes)
+    for child in depth1nodes:
         count=count+1
-        output.write("1/%d:(s'=%d)&(d'=%d)"%(len(depth1[i]),count,grandchild))
-        if(Idx==(len(depth1[i])-1)): #last
+        data=child.split(',')
+        output.write("1/%d:(s'=%d)&(beta'=%d)&(x'=%d)"%(len(depth1),count,int(data[0]),int(data[1])))
+        if(Idx==(len(depth1)-1)): #last
             output.write(";\n")
         else:
             output.write("+")
+        header.append("[]s=%d->"%count)
         Idx+=1
 
-output.write('endmodule\n')
+    #writing transition from depth 1 to depth 0
+    count=len(depth1)
+    for i in range(len(depth1)):
+        output.write(header[i])
+        Idx=0
+        for grandchild in depth1[i]:
+            count=count+1
+            data=grandchild.split(',')
+            output.write("1/%d:(s'=%d)&(beta'=%d)&(x'=%d)"%(len(depth1[i]),count,int(data[0]),int(data[1])))
+            if(Idx==(len(depth1[i])-1)): #last
+                output.write(";\n")
+            else:
+                output.write("+")
+            Idx+=1
 
-# for row in data:
-#     if(row[0]=='depth 2'):
-#         depth=2
-#         continue
-#     if(row[0]=='depth 1'):
-#         depth=1
-#         continue
-
-#     if(depth==1):
-#         count=count+1
-#         output.write("[]s=%d->(s'=%d)&alpha'=%d&beta'=%d\n"%(count,count+1,int(row[5]),int(row[6])))
-#         print(row[2])
-
-#     if(depth==2):
-#         continue
-
-# output.write('endmodule\n')
+    output.write('endmodule\n')

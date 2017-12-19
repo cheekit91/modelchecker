@@ -1,10 +1,11 @@
 /*
- *	SEARCH.C
- *	Tom Kerrigan's Simple Chess Program (TSCP)
- *
- *	Copyright 1997 Tom Kerrigan
- */
+*	SEARCH.C
+*	Tom Kerrigan's Simple Chess Program (TSCP)
+*
+*	Copyright 1997 Tom Kerrigan
+*/
 
+#define _CRT_SECURE_NO_WARNINGS
 
 #include <stdio.h>
 #include <string.h>
@@ -20,23 +21,29 @@ BOOL stop_search;
 
 
 /* think() calls search() iteratively. Search statistics
-   are printed depending on the value of output:
-   0 = no output
-   1 = normal output
-   2 = xboard format output */
-FILE *fp ;
-
+are printed depending on the value of output:
+0 = no output
+1 = normal output
+2 = xboard format output */
+FILE *fp;
+int prun_count;
+int move_count = 0;
 
 void think(int output)
 {
+	prun_count = 0;
 	int i, j, x;
-	fp = fopen("out2.csv", "w");
+
+	char filename[50];
+	sprintf(filename,"C:/Users/cheekit/Desktop/tree%d.csv", move_count);
+	fp = fopen(filename, "w");
+	move_count += 1;
 	/* try the opening book first */
 	/*
 	pv[0][0].u = book_move();
 	if (pv[0][0].u != -1)
 		return;
-	*/ /////////t
+
 	/* some code that lets us longjmp back here and return
 	   from think() when our time is up */
 	stop_search = FALSE;
@@ -57,25 +64,27 @@ void think(int output)
 
 	memset(pv, 0, sizeof(pv));
 	memset(history, 0, sizeof(history));
-	if (output == 1)
-		printf("ply      nodes  score  pv\n");
 	i = 2;
 	//for (i = 1; i <= max_depth; ++i) {
-		follow_pv = TRUE;
-		x = search(-10000, 10000, i, 0);
-		if (output == 1)
-			printf("%3d  %9d  %5d ", i, nodes, x);
-		else if (output == 2)
-			printf("%d %d %d %d",
-					i, x, (get_ms() - start_time) / 10, nodes);
-		if (output) {
-			for (j = 0; j < pv_length[0]; ++j)
-				printf(" %s", move_str(pv[0][j].b));
-			printf("\n");
-			fflush(stdout);
-		}
-		//if (x > 9000 || x < -9000)
-		//	break;
+	follow_pv = TRUE;
+	x = search(-10000, 10000, i, 0);
+	printf("prun_count:%d\n",prun_count);
+	printf("prun probability:%f\n", (prun_count/(float)nodes));
+	if (output == 1)
+		printf("ply      nodes  score  pv\n");
+	if (output == 1)
+		printf("%3d  %9d  %5d ", i, nodes, x);
+	else if (output == 2)
+		printf("%d %d %d %d",
+			i, x, (get_ms() - start_time) / 10, nodes);
+	if (output) {
+		for (j = 0; j < pv_length[0]; ++j)
+			printf(" %s", move_str(pv[0][j].b));
+		printf("\n");
+		fflush(stdout);
+	}
+	//if (x > 9000 || x < -9000)
+	//	break;
 	//}
 	fclose(fp);
 }
@@ -83,35 +92,18 @@ void think(int output)
 
 /* search() does just that, in negamax fashion */
 
-int search(int alpha, int beta, int depth ,int prune)
+int search(int alpha, int beta, int depth, int prune)
 {
 	int i, j, x;
 	BOOL c, f;
 
+	int prun = prune;
+	int prun_ret = -100000;
 	/* we're as deep as we want to be; call quiesce() to get
 	   a reasonable score and return it. */
-	int prun = prune;
-	int prun_ret = 0;
-	if (!depth) {
-		++nodes;
-		int temp = quiesce(alpha,beta);
-		printf ("nodes: %d, depth 0 a: %d b:%d eval %d\n",nodes,alpha,beta,temp);
+	if (!depth)
+		return quiesce(alpha, beta);
 
-		fprintf(fp, "%d,0,%d,%d,%d",nodes,alpha,beta,temp);
-		if (prun == 1)
-			fprintf(fp, ",prune\n");
-		else 
-			fprintf(fp, "\n");
-
-		return temp;
-	}
-	++nodes;
-	
-	int cur_node = nodes;
-	int cur_dep = depth;
-	
-	printf("nodes: %d depth %d a:%d b:%d\n",nodes, depth,alpha,beta);
-	//fprintf(fp, "%d,%d,%d,%d\n",nodes,depth,alpha,beta);
 	/* do some housekeeping every 1024 nodes */
 	if ((nodes & 1023) == 0)
 		checkup();
@@ -142,11 +134,20 @@ int search(int alpha, int beta, int depth ,int prune)
 
 	/* loop through the moves */
 	for (i = first_move[ply]; i < first_move[ply + 1]; ++i) {
+		//prun = 0;
 		sort(i);
 		if (!makemove(gen_dat[i].m.b))
 			continue;
 		f = TRUE;
+		++nodes;
+		if (prun)
+			prun_count += 1;
 		x = -search(-beta, -alpha, depth - 1, prun);
+		fprintf(fp, "%d,%d,%d,%d,%d", nodes, depth - 1, alpha, beta, x);
+		if (prun == 1)
+			fprintf(fp, ",prune\n");
+		else
+			fprintf(fp, "\n");
 		takeback();
 		if (x > alpha) {
 
@@ -154,18 +155,11 @@ int search(int alpha, int beta, int depth ,int prune)
 			   value so it gets ordered high next time we can
 			   search it */
 			history[(int)gen_dat[i].m.b.from][(int)gen_dat[i].m.b.to] += depth;
-			if (x >= beta){
+			if (x >= beta&&prun_ret == -100000) {
 				prun = 1;
-				prun_ret = beta;//////////
-				//fprintf(fp, "%d,%d,%d,%d,%d\n",cur_node,cur_dep,alpha,beta,alpha);
-				//int j;
-				//for (j = i+1; j < first_move[ply + 1]; j++) {
-					//nodes++;
-					//fprintf(fp, "-\n");
-				//}
-				//return beta;
+				prun_ret = beta;
 			}
-			if(x<beta)
+			if (x < beta)
 				alpha = x;
 
 			/* update the PV */
@@ -175,31 +169,20 @@ int search(int alpha, int beta, int depth ,int prune)
 			pv_length[ply] = pv_length[ply + 1];
 		}
 	}
-
 	/* no legal moves? then we're in checkmate or stalemate */
-	/*if (!f) {
+	if (!f) {
 		if (c)
 			return -10000 + ply;
 		else
 			return 0;
-	}*///////
+	}
 
 	/* fifty move draw rule */
-	//if (fifty >= 100)
-	//	return 0;///////
+	if (fifty >= 100)
+		return 0;
 	if (prun == 1)
-		fprintf(fp, "%d,%d,%d,%d,%d",cur_node,cur_dep,alpha,beta,prun_ret);
-	else
-		fprintf(fp, "%d,%d,%d,%d,%d",cur_node,cur_dep,alpha,beta,alpha);
-	
-	if (prune == 1)
-		fprintf(fp, ",prune\n");////look at parent
-	else 
-		fprintf(fp, "\n");
-
-	if (prun == 1) 
 		return prun_ret;
-	else 
+	else
 		return alpha;
 }
 
@@ -215,8 +198,6 @@ int quiesce(int alpha,int beta)
 {
 	int i, j, x;
 
-	//++nodes;
-	
 	/* do some housekeeping every 1024 nodes */
 	if ((nodes & 1023) == 0)
 		checkup();
